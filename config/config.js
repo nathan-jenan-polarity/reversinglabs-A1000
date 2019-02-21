@@ -2,7 +2,7 @@ module.exports = {
     name: 'ReversingLabs A1000',
     acronym: 'A1000',
     logging: { level: 'trace' },
-    entityTypes: ['hash'],
+    entityTypes: ['hash', 'email', 'domain', 'url', 'ip'],
     description: 'ReversingLabs A1000 integration for real-time file hash lookups',
     styles: [
         './styles/a1000.less',
@@ -90,6 +90,34 @@ module.exports = {
             description: 'If checked, the integration will lookup SHA1 Hashes',
             default: true,
             type: 'boolean',
+            userCanEdit: true,
+            adminOnly: false
+        },
+
+        {
+            key: 'tcUrl',
+            name: 'Titanium Cloud URL',
+            description: 'URL to use for Titanium Cloud lookups',
+            default: '',
+            type: 'text',
+            userCanEdit: true,
+            adminOnly: false
+        },
+        {
+            key: 'tcUsername',
+            name: 'Titanium Cloud Username',
+            description: 'Username to use for authentication with Titanium Cloud',
+            default: '',
+            type: 'text',
+            userCanEdit: true,
+            adminOnly: false
+        },
+        {
+            key: 'tcPassword',
+            name: 'Titanium Cloud Password',
+            description: 'Password to use for authentication with Titanium Cloud',
+            default: '',
+            type: 'password',
             userCanEdit: true,
             adminOnly: false
         }

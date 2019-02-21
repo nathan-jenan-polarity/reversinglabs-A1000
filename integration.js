@@ -78,6 +78,10 @@ var createToken = function (options, cb) {
     });
 };
 
+function isUri(entity) {
+    return entity.isURL || entity.isIP || entity.isDomain || entity.isEmail
+}
+
 function doLookup(entities, options, cb) {
     Logger.debug({ options: options }, 'Options');
 
@@ -90,7 +94,8 @@ function doLookup(entities, options, cb) {
         let sha1Entities = entities.filter(entity => entity.isSHA1);
         let sha256Entities = entities.filter(entity => entity.isSHA256);
         let md5Entities = entities.filter(entity => entity.isMD5);
-        let nonHashEntities = entities.filter(entity => !entity.isHash);
+        let uriEntities = entities.filter(isUri);
+        let nonHashEntities = entities.filter(entity => !entity.isHash && !isUri(entity));
         nonHashEntities.forEach(entity => {
             lookupResults.push({ entity: entity, data: null }); // Cache the missed results
         });
@@ -106,12 +111,15 @@ function doLookup(entities, options, cb) {
             (next) => {
                 _lookupEntities(sha256Entities, 'sha256', options, token, next);
             },
+            (next) => {
+                _lookupUriHashes(uriEntities, options, next);
+            }
         ], (err, results) => {
             results.forEach(result => {
                 lookupResults = lookupResults.concat(result);
             });
 
-            Logger.trace('results sent to client', JSON.stringify(lookupResults));
+            Logger.trace('results sent to client', lookupResults);
             cb(err, lookupResults);
         });
     }, function (err) {
@@ -120,9 +128,88 @@ function doLookup(entities, options, cb) {
     });
 }
 
+function _lookupUriHashes(entityObjs, options, cb) {
+    Logger.trace('uri to hash lookup starting');
+
+    let results = [];
+
+    async.each(entityObjs, (entity, next) => {
+        Logger.trace('looking up entity ' + entity.value);
+
+        let ro = {
+            uri: options.tcUrl + '/api/uri_index/v1/query',
+            method: 'POST',
+            auth: {
+                user: options.tcUsername,
+                pass: options.tcPassword
+            },
+            body: {
+                rl: {
+                    query: {
+                        uri: entity.value
+                    }
+                }
+            },
+            json: true
+        }
+
+        requestWithDefaults(ro, function (err, response, body) {
+            Logger.trace('done looking up entity ' + entity.value);
+
+            let errorObject = _isApiError(err, response, body, entityObjs.map(entity => entity.value));
+            if (errorObject) {
+                Logger.trace('error looking up entity ' + entity.value);
+                next(errorObject);
+                return;
+            }
+
+            if (!body) {
+                Logger.trace('no results looking up entity ' + entity.value);
+                results.push({
+                    entity: entity,
+                    data: null
+                });
+                next();
+                return
+            }
+
+            Logger.trace('got result looking up entity ' + entity.value);
+
+            let details = {
+                sha1_list: body.rl.uri_index.sha1_list.slice(0, 10),
+                tcUrl: options.url,
+                isUriToHash: true
+            }
+
+            results.push({
+                entity: entity,
+                data: {
+                    summary: [],
+                    details: [details]
+                }
+            });
+            next();
+        });
+    }, err => {
+        if (err) {
+            cb(err);
+            return;
+        }
+
+        Logger.trace('sending uri hash lookup results', { results: JSON.stringify(results) });
+
+        cb(null, results);
+    });
+}
+
 // Entity type should be sha1, sha256, or md5
 function _lookupEntities(entityObjs, entityType, options, token, cb) {
     Logger.trace('entity lookup starting');
+
+    if (entityObjs.length === 0) {
+        cb(null, []);
+        return
+    }
 
     let requestOptions = {
         uri: options.url + '/api/samples/list/',
